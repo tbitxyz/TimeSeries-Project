@@ -1,0 +1,410 @@
+---
+title: "SMU DS Summer 2020 COVID19 Project"
+author: "YuMei Bennett"
+date: "7/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r loading_us_daily}
+us<-read.csv(file.choose(),header=T)
+head(us,2)
+#plot daily test positive count
+plotts.wge(us$positiveIncrease)
+# exclude early days only sick people gets tested
+us1<-subset.data.frame(us,date>20200303)
+summary.data.frame(us1)
+```
+
+```{r graph_us_daily_rate}
+#Create a line chart for daily test positive and death rate
+# get the range for the x and y axis
+t=c(1:length(us1$date))
+xrange <- range(t)
+# get the test positive rate
+dposrate <- us1$positiveIncrease/(us1$positiveIncrease+us1$negativeIncrease)
+dposrater<-rev(dposrate)
+yrange <- range(dposrater)
+# get the death to positive rate
+ddrate <- us1$deathIncrease/us1$positiveIncrease
+ddrater<-rev(ddrate)
+
+# plot the graph
+plot(t, dposrater, type="o", lwd=0.5,
+    lty=1, col='blue', pch=15,cex=0.4,xlab="Date (March 04 to July 15)", ylab="Daily Test Positive / Death Rate")
+lines(t, ddrater, type="o", lwd=0.5,
+    lty=2, col='red', pch=16,cex=0.4)
+
+# add a title and subtitle
+title("Daily US Test Positive & Death Rate")
+
+# add a legend
+legend(100, yrange[2], legend=c("Positive", "Death"), cex=0.8, col=c("blue","red"), lty=1:2)
+```
+
+```{r graph_us_daily_count}
+#Create a line chart for daily test positive and death count
+# get the range for the x and y axis
+# get the test positive count
+dpos <- us1$positiveIncrease
+dposr<-rev(dpos)
+yrange <- range(dposr)
+# get the death count
+dd <- us1$deathIncrease
+ddr<-rev(dd)
+
+# plot the graph
+plot(t, dposr, type="o", lwd=0.5,
+    lty=1, col='blue', pch=15,cex=0.4,xlab="Date (March 04 to July 15)", ylab="Daily Test Positive / Death Count")
+lines(t, ddr, type="o", lwd=0.5,
+    lty=2, col='red', pch=16,cex=0.4)
+
+# add a title and subtitle
+title("Daily US Test Positive & Death Count")
+
+# add a legend
+legend(5, yrange[2], legend=c("Positive", "Death"), cex=0.8, col=c("blue","red"), lty=1:2)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r quick_analysis on us daily test positive rate}
+
+plotts.sample.wge(dposrater)
+# ACF slow dumping, a tiny cyclic behavior. Parzen window show strong frequency at 0, weak frequency at 0.3 and 0.4. 
+# try ARMA model directly
+is.na(dposrater_d1)
+aic5.wge(dposrater,p=0:10, q=0:5)
+# AIC lingers around -7.x, doesn't change much. aic5.wge always prefer to pick high order p&q
+# try to take first diff
+dposrater_d1<-artrans.wge(dposrater,phi.tr = 1)
+acf(dposrater_d1)
+# ACF looks much better, still 3 lags are above the limit line. 
+aic5.wge(dposrater_d1, p=0:10, q=0:4)
+# still pick 10, 1.AIC lingers around -7.4 is there any other thing we can do here?
+aic5.wge(dposrater_d1, p=0:10, q=0:4, type="bic")
+# BIC pick 0, 1, BIC lingers around -7.2
+# lets first test out the residual
+estd1aic <- est.arma.wge(dposrater_d1, p=10, q=1, factor = T)
+fore.aruma.wge(dposrater,d=1, phi = estd1aic$phi,theta = estd1aic$theta, n.ahead = 40, lastn= T, limits=F )
+# as we have 1-B term, the long term forcast is just repeating the last value in dataset. 
+# try forecast without the 1-B
+estaic <- est.arma.wge(dposrater, p=10, q=2, factor = T)
+fore.aruma.wge(dposrater, phi = estaic$phi,theta = estaic$theta, n.ahead = 80, lastn= F, limits=F )
+# now it is very slowly trending towards dataset mean because it is a stationary model
+# what about BIC pick simple model?
+estd1bic <- est.arma.wge(dposrater_d1, p=0, q=1, factor = T)
+fore.aruma.wge(dposrater,d=1, phi = estd1bic$phi,theta = estd1bic$theta, n.ahead = 40, lastn= F, limits=F )
+#very very straight line, not good!
+# calculating ASE
+f_dposrater_d1<-fore.aruma.wge(dposrater,d=1, phi = estd1bic$phi,theta = estd1bic$theta, n.ahead = 20, lastn= T, limits=F )
+ase_dposrater_d1_aic = mean((f_dposrater_d1$f - dposrater[length(f_dposrater_d1$f)-20+1:length(f_dposrater_d1$f)])^2)
+ase_dposrater_d1_aic
+```
+
+```{r quick_analysis on us daily test positive count}
+# try to work on positive count, rather than rate
+plotts.sample.wge(dposr)
+aic5.wge(dposr,p=0:10,q=0:4)
+# pick 8,2, better AIC 15.68 on count, vs. -7.4 on rate
+aic5.wge(dposr,p=0:10,q=0:4, type='bic')
+# pick 8, 1, not much different
+# estimate model phi and theta
+estaic_ct <- est.arma.wge(dposr, p=8, q=2, factor = T)
+f_dposr_ct <- fore.aruma.wge(dposr, phi = estaic_ct$phi,theta = estaic_ct$theta, n.ahead = 20, lastn= T, limits=F )
+# ASE
+ase_dposr_ct = mean((f_dposr_ct$f - dposr[length(f_dposr_ct$f)-20+1:length(f_dposr_ct$f)])^2)
+ase_dposr_ct
+# ASE 1949770638, too large, try to take a diff
+# complete the model, test residual
+ljung.wge(f_dposr_ct$res,p=8,q=2)
+# pval = 0.9725793
+plotts.wge(f_dposr_ct$res)
+# forecast out 
+f_dposr_ct_7 <- fore.aruma.wge(dposr, phi = estaic_ct$phi,theta = estaic_ct$theta, n.ahead = 7, lastn= F, limits=T )
+f_dposr_ct_90 <- fore.aruma.wge(dposr, phi = estaic_ct$phi,theta = estaic_ct$theta, n.ahead = 90, lastn= F, limits=T )
+```
+```{r quick_analysis on us daily test positive rate from May 03 when positive rate is <0.1}
+# try to work on positive count, subset data from May 03
+# get the test positive rate
+us2<-subset.data.frame(us,date>20200503)
+dposrate_may <- us2$positiveIncrease/(us2$totalTestResultsIncrease)
+dposrater_may<-rev(dposrate_may)
+plotts.sample.wge(dposrater_may)
+
+# straight to ARMA
+aic5.wge(dposrater_may,p=0:10,q=0:4)
+# pick 7,2, AIC -9.5 vs. -7.4 on mar data start
+aic5.wge(dposrater_may,p=0:10,q=0:4, type='bic')
+# pick 1, 1, BIC=-9.3567
+# estimate aic pick model phi and theta
+estaic_may <- est.arma.wge(dposrater_may, p=7, q=2, factor = T)
+f_dposr_may <- fore.aruma.wge(dposrater_may, phi = estaic_may$phi,theta = estaic_may$theta, n.ahead = 20, lastn= T, limits=F )
+# ASE
+ase_dposrater_may = mean((f_dposr_may$f - dposrater_may[length(f_dposr_may$f)-20+1:length(f_dposr_may$f)])^2)
+ase_dposrater_may
+# ASE 0.0003084327
+# complete the model, test residual
+ljung.wge(f_dposr_may$res,p=7,q=2)
+# pval = 0.1019646
+plotts.wge(f_dposr_may$res)
+# forecast out 
+f_dposr_may_7 <- fore.aruma.wge(dposrater_may, phi = estaic_may$phi,theta = estaic_may$theta, n.ahead = 7, lastn= F, limits=T )
+f_dposr_may_90 <- fore.aruma.wge(dposrater_may, phi = estaic_may$phi,theta = estaic_may$theta, n.ahead = 90, lastn= F, limits=T )
+#not too happy
+```
+
+```{r quick_analysis on us daily test positive count from May 03 when positive rate is <0.1}
+# try diff once
+dposrater_may_d1 <- artrans.wge(dposrater_may,phi.tr = 1)
+aic5.wge(dposrater_may_d1,p=0:15,q=0:4)
+# pick 14, 2, AIC=-9.8, tiny larger. not worth the effort of extra degrees
+
+# estimate d1 pick model phi and theta
+estaic_may_d1 <- est.arma.wge(dposrater_may_d1, p=14, q=2, factor = T)
+f_dposr_may_d1 <- fore.aruma.wge(dposrater_may, d=1,phi = estaic_may_d1$phi,theta = estaic_may_d1$theta, n.ahead = 20, lastn= T, limits=F )
+# looking good
+
+# ASE
+ase_dposrater_may_d1 = mean((f_dposr_may_d1$f - dposrater_may_d1[length(f_dposr_may_d1$f)-20+1:length(f_dposr_may_d1$f)])^2)
+ase_dposrater_may_d1
+# ASE 0.006799229 higher then arma model 0.0003681098 
+# complete the model, test residual
+ljung.wge(f_dposr_may_d1$res,p=14,q=2)
+# pval = 0.01949154, not white noise
+plotts.wge(f_dposr_may_d1$res)
+# forecast out 
+f_dposr_may_d1_7 <- fore.aruma.wge(dposrater_may, d=1, phi = estaic_may_d1$phi,theta = estaic_may_d1$theta, n.ahead = 7, lastn= F, limits=T )
+f_dposr_may_d1_90 <- fore.aruma.wge(dposrater_may, d=1, phi = estaic_may_d1$phi,theta = estaic_may_d1$theta, n.ahead = 90, lastn= F, limits=T )
+
+```
+
+
+```{r quick_analysis on us daily test positive count diff once}
+# try to see if diff make sense on count data
+dposr_d1 <- artrans.wge(dposr, phi.tr = 1)
+# looks good, now near 0 frequency is gone, higher frequency shows up. ACF show cyclic behavior
+aic5.wge(dposr_d1,p=0:10,q=0:4)
+# pick 6,2 AIC 15.66, not changing much
+estaic_d1_ct <- est.arma.wge(dposr_d1, p=6, q=2, factor = T)
+f_dposr_d1_ct <- fore.aruma.wge(dposr, d=1,phi = estaic_d1_ct$phi,theta = estaic_d1_ct$theta, n.ahead = 20, lastn= T, limits=F )
+# ASE
+ase_dposr_d1_ct = mean((f_dposr_d1_ct$f - dposr[length(f_dposr_d1_ct$f)-20+1:length(f_dposr_d1_ct$f)])^2)
+ase_dposr_d1_ct
+# 1860690299
+# residual white noise test
+ljung.wge(f_dposr_d1_ct$res,p=6,q=2)
+# pval = 0.9841029, can't reject Ho which is white noise
+# plot the residual
+plotts.wge(f_dposr_d1_ct$res)
+#forecast out
+f_dposr_d1_ct_7 <- fore.aruma.wge(dposr, d=1,phi = estaic_d1_ct$phi,theta = estaic_d1_ct$theta, n.ahead = 7, lastn= F, limits=T )
+f_dposr_d1_ct_90 <- fore.aruma.wge(dposr, d=1,phi = estaic_d1_ct$phi,theta = estaic_d1_ct$theta, n.ahead = 90, lastn= F, limits=T )
+```
+
+```{r quick_analysis on us daily test positive count 7 day cycle}
+# try a 7 days cycle on count data
+dposr_s7 <- artrans.wge(dposr, phi.tr = c(0,0,0,0,0,0,1))
+# ACF damping fast
+aic5.wge(dposr_s7,p=0:10,q=0:4)
+# pick 8,0 AIC 15.82, not changing much
+estaic_s7_ct <- est.arma.wge(dposr_s7, p=8, q=0, factor = T)
+f_dposr_s7_ct <- fore.aruma.wge(dposr, s=7,phi = estaic_s7_ct$phi,theta = estaic_s7_ct$theta, n.ahead = 20, lastn= T, limits=F )
+#still not very good, much lower than original data
+#ASE
+ase_dposr_s7_ct = mean((f_dposr_s7_ct$f - dposr[length(f_dposr_s7_ct$f)-20+1:length(f_dposr_s7_ct$f)])^2)
+ase_dposr_s7_ct
+# 1878125434, not changing much
+# residual white noise test
+ljung.wge(f_dposr_s7_ct$res,p=8,q=0)
+# pval = 0.9090886, lower, still good. can't reject Ho which is white noise
+# plot the residual
+plotts.wge(f_dposr_s7_ct$res)
+#forecast out
+f_dposr_s7_ct_7 <- fore.aruma.wge(dposr, s=7,phi = estaic_s7_ct$phi,theta = estaic_s7_ct$theta, n.ahead = 7, lastn= F, limits=T )
+f_dposr_s7_ct_90 <- fore.aruma.wge(dposr, s=7,phi = estaic_s7_ct$phi,theta = estaic_s7_ct$theta, n.ahead = 90, lastn= F, limits=T )
+
+```
+
+```{r loading_Illinois_daily}
+IL<-read.csv(file.choose(),header=T)
+head(IL,2)
+# to get to daily test positive count
+plotts.wge(IL$positiveIncrease)
+# exclude early days only sick people gets tested
+IL1<-subset.data.frame(IL,date>20200313)
+
+plotts.wge(IL1$positiveIncrease)
+summary.data.frame(us1)
+il_dpos <- IL1$positiveIncrease
+length(il_dposr)
+```
+
+```{r graph_IL_daily_count}
+#Create a line chart for daily test positive and death count
+# get the range for the x and y axis
+t=c(1:length(IL1$date))
+xrange <- range(t)
+# get the test positive daily count in oldest first order
+il_dposr<-rev(il_dpos)
+yrange <- range(il_dposr)
+# get the daily death count
+il_dd <- IL1$deathIncrease
+il_ddr<-rev(il_dd)
+plotts.wge(il_ddr)
+#il_ddr = c(il_ddr,rep('na',10))
+# plot the graph
+plot(t, il_dposr, type="o", lwd=0.5,
+    lty=1, col='blue', pch=15,cex=0.4,xlab="Date (March 14 to July 15)", ylab="Daily Test Positive / Death Count")
+lines(t, il_ddr, type="o", lwd=0.5,
+    lty=2, col='red', pch=16,cex=0.4)
+
+# add a title and subtitle
+title("Daily State of Illinois Test Positive & Death Count")
+
+# add a legend
+legend(100, yrange[2], legend=c("Positive", "Death"), cex=0.8, col=c("blue","red"), lty=1:2)
+```
+
+```{r graph_IL_daily_rate}
+#Create a line chart for daily test positive and death rate
+# get the range for the x and y axis
+t=c(1:length(IL1$date))
+xrange <- range(t)
+# get the test positive rate
+dposrate_il1 <- IL1$positiveIncrease/(IL1$positiveIncrease+IL1$negativeIncrease)
+dposrater_il1<-rev(dposrate_il1)
+yrange <- range(dposrater_il1)
+# get the death to positive rate
+ddrate_il1 <- IL1$deathIncrease/IL1$positiveIncrease
+ddrater_il1<-rev(ddrate_il1)
+
+# plot the graph
+plot(t, dposrater_il1, type="o", lwd=0.5,
+    lty=1, col='blue', pch=15,cex=0.4,xlab="Date (March 13 to July 15)", ylab="Daily Test Positive / Death Rate")
+lines(t, ddrater_il1, type="o", lwd=0.5,
+    lty=2, col='red', pch=16,cex=0.4)
+
+# add a title and subtitle
+title("Daily Illinois Test Positive & Death Rate")
+
+# add a legend
+legend(100, yrange[2], legend=c("Positive", "Death"), cex=0.8, col=c("blue","red"), lty=1:2)
+```
+
+```{r univariant_IL_daily_count}
+plotts.sample.wge(il_dposr)
+#damping faster compares to us
+# try to work on positive count, rather than rate
+aic5.wge(il_dposr,p=0:10,q=0:4)
+# pick 5,2, AIC 11.96
+aic5.wge(il_dposr,p=0:10,q=0:4, type='bic')
+# pick 1, 1? BIC=12.08
+# estimate model phi and theta
+il_estaic_ct <- est.arma.wge(il_dposr, p=5, q=2, factor = T)
+f_il_dposr_ct <- fore.aruma.wge(il_dposr, phi = il_estaic_ct$phi,theta = il_estaic_ct$theta, n.ahead = 20, lastn= T, limits=F )
+# ASE
+ase_il_dposr_ct = mean((f_il_dposr_ct$f - il_dposr[length(f_il_dposr_ct$f)-20+1:length(f_il_dposr_ct$f)])^2)
+ase_il_dposr_ct
+# ASE 365406.4, too large, try to take a diff?
+# complete the model, test residual
+ljung.wge(f_il_dposr_ct$resid,p=5,q=2)
+# pval = 0.1087659
+plotts.wge(f_il_dposr_ct$res)
+acf(f_il_dposr_ct$resid)
+# forecast out 
+f_il_dposr_ct_7 <- fore.aruma.wge(il_dposr, phi = il_estaic_ct$phi,theta = il_estaic_ct$theta, n.ahead = 7, lastn= F, limits=T )
+f_il_dposr_ct_90 <- fore.aruma.wge(il_dposr, phi = il_estaic_ct$phi,theta = il_estaic_ct$theta, n.ahead = 90, lastn= F, limits=T )
+```
+
+```{r univariant_IL_daily_count_d1}
+il_dposr_d1<- artrans.wge(il_dposr,phi.tr = 1)
+#second lag is large
+aic5.wge(il_dposr_d1,p=0:10,q=0:4)
+# pick 3,2, AIC 11.95
+aic5.wge(il_dposr_d1,p=0:10,q=0:4, type='bic')
+# pick 0, 1 BIC=12.06
+# estimate model phi and theta
+il_estaic_d1_ct <- est.arma.wge(il_dposr_d1, p=3, q=2, factor = T)
+f_il_dposr_d1_ct <- fore.aruma.wge(il_dposr, d=1, phi = il_estaic_d1_ct$phi,theta = il_estaic_d1_ct$theta, n.ahead = 20, lastn= T, limits=F )
+# ASE
+ase_il_dposr_d1_ct = mean((f_il_dposr_d1_ct$f - il_dposr_d1[length(f_il_dposr_d1_ct$f)-20+1:length(f_il_dposr_d1_ct$f)])^2)
+ase_il_dposr_d1_ct
+# ASE 599938.6, much larger, no go
+# complete the model, test residual
+ljung.wge(f_il_dposr_d1_ct$resid,p=3,q=2)
+# pval = 0.1711935
+plotts.wge(f_il_dposr_d1_ct$res)
+acf(f_il_dposr_d1_ct$resid)
+# forecast out 
+f_il_dposr_d1_ct_7 <- fore.aruma.wge(il_dposr, d=1, phi = il_estaic_d1_ct$phi,theta = il_estaic_d1_ct$theta, n.ahead = 7, lastn= F, limits=F )
+f_il_dposr_d1_ct_90 <- fore.aruma.wge(il_dposr, d=1, phi = il_estaic_d1_ct$phi,theta = il_estaic_d1_ct$theta, n.ahead = 90, lastn= F, limits=F )
+```
+```{r univariant_IL_daily_test positive rate after may 3rd arma}
+IL2<-subset.data.frame(IL,date>20200503)
+il_dposrater <- rev(IL2$positiveIncrease/IL2$totalTestResultsIncrease)
+plotts.sample.wge(il_dposrater)
+
+# try ARMA first
+aic5.wge(il_dposrater,p=0:16,q=0:4)
+# pick 12,3, AIC -8.68
+
+# estimate model phi and theta
+il_estaic <- est.arma.wge(il_dposrater, p=12, q=3, factor = T)
+
+f_il_dposr <- fore.aruma.wge(il_dposrater, d=0, phi = il_estaic$phi,theta = il_estaic$theta, n.ahead = 20, lastn= T, limits=F )
+# ASE
+ase_il_dposr = mean((f_il_dposr$f - il_dposrater[length(f_il_dposr$f)-20+1:length(f_il_dposr$f)])^2)
+ase_il_dposr
+# ASE  0.007807011 vs. 0.003039605 for d=2
+# complete the model, test residual
+ljung.wge(f_il_dposr$resid,p=12,q=3)
+# pval = 0.1083848 white noise
+plotts.wge(f_il_dposr$res)
+acf(f_il_dposr$resid)
+# forecast out 
+f_il_dposr_7 <- fore.aruma.wge(il_dposrater, d=0, phi = il_estaic$phi,theta = il_estaic$theta, n.ahead = 7, lastn= F, limits=T )
+f_il_dposr_90 <- fore.aruma.wge(il_dposrater, d=0, phi = il_estaic$phi,theta = il_estaic$theta, n.ahead = 90, lastn= F, limits=T )
+```
+
+
+```{r univariant_IL_daily_test positive rate after may 3rd, diff data}
+
+#diff data
+il_dposrater_d1 <- artrans.wge(il_dposrater,phi.tr = 1)
+aic5.wge(il_dposrater_d1,p=0:10,q=0:4)
+#pick 7,2, aic=-8.58
+# estimate model phi and theta
+il_estaic_d1 <- est.arma.wge(il_dposrater_d1, p=7, q=2, factor = T)
+# do another diff
+il_dposrater_d2 <- artrans.wge(il_dposrater_d1,phi.tr = 1)
+aic5.wge(il_dposrater_d2,p=0:10,q=0:4)
+il_estaic_d2 <- est.arma.wge(il_dposrater_d2, p=10, q=0, factor = T)
+
+f_il_dposr_d2 <- fore.aruma.wge(il_dposrater, d=2, phi = il_estaic_d2$phi,theta = il_estaic_d2$theta, n.ahead = 20, lastn= T, limits=F )
+# ASE
+ase_il_dposr_d2 = mean((f_il_dposr_d2$f - il_dposrater_d2[length(f_il_dposr_d2$f)-20+1:length(f_il_dposr_d2$f)])^2)
+ase_il_dposr_d2
+# ASE  0.003039605
+# complete the model, test residual
+ljung.wge(f_il_dposr_d2$resid,p=10,q=0)
+# pval = 0.0004020852, NOT white noise
+plotts.wge(f_il_dposr_d2$res)
+acf(f_il_dposr_d2$resid)
+# forecast out 
+f_il_dposr_d2_7 <- fore.aruma.wge(il_dposrater, d=2, phi = il_estaic_d2$phi,theta = il_estaic_d2$theta, n.ahead = 7, lastn= F, limits=T )
+f_il_dposr_d2_90 <- fore.aruma.wge(il_dposrater, d=2, phi = il_estaic_d2$phi,theta = il_estaic_d2$theta, n.ahead = 90, lastn= F, limits=T )
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
